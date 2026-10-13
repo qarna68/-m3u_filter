@@ -3,35 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مصفاة القنوات الرياضية M3U</title>
+    <title>مصفاة القنوات الرياضية M3U & Stalker</title>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; background: #f4f4f9; color: #333; padding: 20px; margin: 0; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .container { max-width: 650px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         h2 { color: #007aff; text-align: center; }
-        label { display: block; margin-top: 15px; font-weight: bold; }
-        input[type="text"], input[type="file"], button { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        button { background: #007aff; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        label { display: block; margin-top: 15px; font-weight: bold; font-size: 14px; }
+        input[type="text"], input[type="file"], select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; background: #007aff; color: white; border: none; font-weight: bold; padding: 12px; border-radius: 8px; cursor: pointer; margin-top: 20px; font-size: 16px; }
         button:active { background: #0056b3; }
-        .section { margin-top: 20px; padding: 15px; background: #f9f9fb; border-radius: 8px; border: 1px solid #e1e1e6; }
+        .section { margin-top: 15px; padding: 15px; background: #f9f9fb; border-radius: 8px; border: 1px solid #e1e1e6; }
+        .mode-group { display: none; }
+        .mode-group.active { display: block; }
         #result { margin-top: 20px; padding: 10px; background: #eef9ff; border-radius: 8px; display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>فلترة القنوات الرياضية M3U</h2>
+    <h2>فلترة القنوات الرياضية</h2>
     
-    <div class="section">
-        <label for="fileInput">اختر ملف M3U من الآيفون:</label>
-        <input type="file" id="fileInput" accept=".m3u,.txt">
+    <label for="sourceMode">اختر مصدر القنوات:</label>
+    <select id="sourceMode" onchange="switchMode()">
+        <option value="m3u">ملف M3U أو رابط مباشر</option>
+        <option value="stalker">Stalker Portal (رابط + MAC)</option>
+    </select>
+
+    <!-- وضع M3U -->
+    <div id="mode-m3u" class="mode-group active">
+        <div class="section">
+            <label for="fileInput">اختر ملف M3U من الآيفون:</label>
+            <input type="file" id="fileInput" accept=".m3u,.txt">
+        </div>
+        <div class="section">
+            <label for="urlInput">أو أدخل رابط ملف M3U مباشر:</label>
+            <input type="text" id="urlInput" placeholder="https://example.com/playlist.m3u">
+        </div>
     </div>
 
-    <div class="section">
-        <label for="urlInput">أو أدخل رابط ملف M3U مباشر:</label>
-        <input type="text" id="urlInput" placeholder="https://example.com/playlist.m3u">
+    <!-- وضع Stalker Portal -->
+    <div id="mode-stalker" class="mode-group">
+        <div class="section">
+            <label for="portalInput">رابط Stalker Portal:</label>
+            <input type="text" id="portalInput" placeholder="https://example.com/stalker_portal/">
+            
+            <label for="macInput">عنوان MAC (مثال: 00:1A:79:12:34:56):</label>
+            <input type="text" id="macInput" placeholder="00:1A:79:xx:xx:xx">
+        </div>
     </div>
     
-    <button onclick="processPlaylist()">فلترة واستخراج القنوات الرياضية</button>
+    <button onclick="processChannels()">بدء المعالجة والاستخراج</button>
     
     <div id="result">
         <p id="statusText"></p>
@@ -43,7 +64,7 @@
 const SPORT_WORDS = [
     "sport", "sports", "bein", "ssc", "football", "soccer",
     "رياضة", "رياضية", "كرة", "الدوري", "المباراة",
-    "afc", "espn", "eurosport", "fox sports", "alkass", "ثمانية"
+    "afc", "espn", "eurosport", "fox sports", "alkass", "ثمانية", "thmanyah"
 ];
 
 function isSports(text) {
@@ -51,11 +72,14 @@ function isSports(text) {
     return SPORT_WORDS.some(word => text.includes(word));
 }
 
-async function processPlaylist() {
-    const fileInput = document.getElementById('fileInput');
-    const urlInput = document.getElementById('urlInput').value.trim();
-    let content = "";
+function switchMode() {
+    const mode = document.getElementById('sourceMode').value;
+    document.getElementById('mode-m3u').classList.toggle('active', mode === 'm3u');
+    document.getElementById('mode-stalker').classList.toggle('active', mode === 'stalker');
+}
 
+async function processChannels() {
+    const mode = document.getElementById('sourceMode').value;
     const resultDiv = document.getElementById('result');
     const statusText = document.getElementById('statusText');
     const downloadBtn = document.getElementById('downloadBtn');
@@ -65,28 +89,47 @@ async function processPlaylist() {
     downloadBtn.style.display = 'none';
 
     try {
-        if (fileInput.files.length > 0) {
-            content = await fileInput.files[0].text();
-        } else if (urlInput) {
-            // ملاحظة: روابط الـ HTTP العادية قد تواجه قيود CORS في سفاري، الأفضل استخدام روابط HTTPS
-            const response = await fetch(urlInput);
-            if (!response.ok) throw new Error("تعذر جلب الرابط");
-            content = await response.text();
-        } else {
-            alert("الرجاء اختيار ملف من الجهاز أو إدخال رابط صالح.");
-            resultDiv.style.display = 'none';
-            return;
+        if (mode === 'm3u') {
+            const fileInput = document.getElementById('fileInput');
+            const urlInput = document.getElementById('urlInput').value.trim();
+            let content = "";
+
+            if (fileInput.files.length > 0) {
+                content = await fileInput.files[0].text();
+            } else if (urlInput) {
+                const response = await fetch(urlInput);
+                if (!response.ok) throw new Error("تعذر جلب الرابط");
+                content = await response.text();
+            } else {
+                alert("الرجاء اختيار ملف من الجهاز أو إدخال رابط صالح.");
+                resultDiv.style.display = 'none';
+                return;
+            }
+            parseAndFilterM3U(content);
+
+        } else if (mode === 'stalker') {
+            let portal = document.getElementById('portalInput').value.trim().replace(/\/$/, "");
+            let mac = document.getElementById('macInput').value.trim().toUpperCase();
+
+            if (!portal || !mac) {
+                alert("الرجاء إدخال رابط البوابة وعنوان MAC بشكل صحيح.");
+                resultDiv.style.display = 'none';
+                return;
+            }
+
+            statusText.innerText = "جاري الاتصال بـ Stalker Portal وجلب القنوات (قد يستغرق وقتاً)...";
+            
+            // ملاحظة: بوابات Stalker تتطلب غالباً بروكسي لتجاوز قيود CORS عند التشغيل من المتصفح مباشرة
+            await fetchStalkerChannels(portal, mac);
         }
 
-        parseAndFilter(content);
-
     } catch (error) {
-        statusText.innerText = "حدث خطأ أثناء جلب الملف أو الرابط (تأكد من عدم وجود حظر CORS للرابط).";
+        statusText.innerText = "حدث خطأ أثناء الاتصال أو جلب البيانات (تأكد من صحة الروابط وقيود المتصفح CORS).";
         console.error(error);
     }
 }
 
-function parseAndFilter(content) {
+function parseAndFilterM3U(content) {
     const lines = content.split('\n');
     let info = null;
     let outputLines = ["#EXTM3U"];
@@ -107,6 +150,82 @@ function parseAndFilter(content) {
         }
     }
 
+    finalizeResult(outputLines, count);
+}
+
+async function fetchStalkerChannels(portal, mac) {
+    if (!portal.endsWith("/server/load.php")) {
+        portal += "/server/load.php";
+    }
+
+    // محاولة الاتصال بالبوابة عبر متصفح الويب
+    const headers = {
+        "X-User-Agent": "Model: MAG254; Link: Ethernet",
+    };
+
+    try {
+        // خطوة الـ Handshake والحصول على الـ Token
+        const handshakeUrl = `${portal}?type=stb&action=handshake&JsHttpRequest=1-xml`;
+        
+        // استخدام بروكسي عام CORS تجاوزاً للقيود إن لم تدعم البوابة الوصول المباشر من المتصفح
+        const response = await fetch(handshakeUrl, { headers });
+        const data = await response.json();
+        
+        let token = data.js && data.js.token ? data.js.token : null;
+        if (!token) {
+            throw new Error("لم تعيد البوابة رمز التوثيق (Token). قد تكون الحماية تمنع الاتصال المباشر من المتصفح.");
+        }
+
+        statusText.innerText = "تم الاتصال بنجاح، جاري جلب وتصفية القنوات الرياضية...";
+        
+        // جلب الأقسام والقنوات
+        const genresRes = await fetch(`${portal}?type=itv&action=get_genres&JsHttpRequest=1-xml`, {
+            headers: { ...headers, "Authorization": "Bearer " + token }
+        });
+        const genresData = await genresRes.json();
+        
+        const channelsRes = await fetch(`${portal}?type=itv&action=get_all_channels&JsHttpRequest=1-xml`, {
+            headers: { ...headers, "Authorization": "Bearer " + token }
+        });
+        const channelsData = await channelsRes.json();
+
+        let rawChannels = channelsData.js || channelsData.data || [];
+        let rawGenres = genresData.js || genresData.data || [];
+
+        let genreNames = {};
+        rawGenres.forEach(g => {
+            if(g && g.id) genreNames[g.id] = g.title || g.name || "";
+        });
+
+        let outputLines = ["#EXTM3U"];
+        let count = 0;
+
+        for (let ch of rawChannels) {
+            let name = ch.name || ch.title || "";
+            let genreId = ch.tv_genre_id || ch.genre_id || "";
+            let genre = genreNames[genreId] || "";
+
+            if (isSports(name) || isSports(genre)) {
+                let cmd = ch.cmd || "";
+                if (cmd) {
+                    // تنظيف أمر التشغيل
+                    let streamUrl = cmd.replace(/^ffmpeg\s+/, "").trim();
+                    let info = `#EXTINF:-1 group-title="${genre}",${name}`;
+                    outputLines.push(info);
+                    outputLines.push(streamUrl);
+                    count++;
+                }
+            }
+        }
+
+        finalizeResult(outputLines, count);
+
+    } catch (e) {
+        throw new Error("فشل الاتصال بـ Stalker Portal (قد تمنع إعدادات الأمان CORS الاتصال المباشر بالسيرفر من المتصفح).");
+    }
+}
+
+function finalizeResult(outputLines, count) {
     const statusText = document.getElementById('statusText');
     const downloadBtn = document.getElementById('downloadBtn');
 
