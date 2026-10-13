@@ -82,7 +82,6 @@ const SPECIFIC_WORDS = [
 function matchFilter(text) {
     text = (text || "").toLowerCase();
     const filterType = document.getElementById('filterType').value;
-    
     const wordsList = (filterType === 'specific') ? SPECIFIC_WORDS : ALL_SPORT_WORDS;
     return wordsList.some(word => text.includes(word));
 }
@@ -132,12 +131,12 @@ async function processChannels() {
                 return;
             }
 
-            statusText.innerText = "جاري الاتصال بـ Stalker Portal وجلب القنوات...";
+            statusText.innerText = "جاري الاتصال بـ Stalker Portal...";
             await fetchStalkerChannels(portal, mac);
         }
 
     } catch (error) {
-        statusText.innerText = "حدث خطأ أثناء الاتصال أو جلب البيانات.";
+        statusText.innerText = "حدث خطأ: قد تمنع حماية السيرفر (CORS) الاتصال المباشر من المتصفح. يُفضل استخدام ملفات أو روابط M3U مباشرة.";
         console.error(error);
     }
 }
@@ -150,9 +149,9 @@ function parseAndFilterM3U(content) {
 
     for (let line of lines) {
         line = line.trim();
-        if (line.startswith("#EXTINF:")) {
+        if (line.startsWith("#EXTINF:")) {
             info = line;
-        } else if (line && !line.startswith("#") && info) {
+        } else if (line && !line.startsWith("#") && info) {
             let name = info.includes(",") ? info.split(",").pop().trim() : "";
             if (matchFilter(info) || matchFilter(name)) {
                 outputLines.push(info);
@@ -171,59 +170,59 @@ async function fetchStalkerChannels(portal, mac) {
         portal += "/server/load.php";
     }
 
-    const headers = { "X-User-Agent": "Model: MAG254; Link: Ethernet" };
+    const headers = { 
+        "X-User-Agent": "Model: MAG254; Link: Ethernet",
+        "Cookie": `mac=${mac}`
+    };
 
-    try {
-        const handshakeUrl = `${portal}?type=stb&action=handshake&JsHttpRequest=1-xml`;
-        const response = await fetch(handshakeUrl, { headers });
-        const data = await response.json();
-        
-        let token = data.js && data.js.token ? data.js.token : null;
-        if (!token) throw new Error("فشل الحصول على الرمز.");
+    const handshakeUrl = `${portal}?type=stb&action=handshake&JsHttpRequest=1-xml`;
+    const response = await fetch(handshakeUrl, { headers });
+    const data = await response.json();
+    
+    let token = data.js && data.js.token ? data.js.token : null;
+    if (!token) throw new Error("فشل الحصول على الرمز من البوابة.");
 
-        const genresRes = await fetch(`${portal}?type=itv&action=get_genres&JsHttpRequest=1-xml`, {
-            headers: { ...headers, "Authorization": "Bearer " + token }
-        });
-        const genresData = await genresRes.json();
-        
-        const channelsRes = await fetch(`${portal}?type=itv&action=get_all_channels&JsHttpRequest=1-xml`, {
-            headers: { ...headers, "Authorization": "Bearer " + token }
-        });
-        const channelsData = await channelsRes.json();
+    statusText.innerText = "تم الاتصال، جاري جلب القنوات...";
+    
+    const genresRes = await fetch(`${portal}?type=itv&action=get_genres&JsHttpRequest=1-xml`, {
+        headers: { ...headers, "Authorization": "Bearer " + token }
+    });
+    const genresData = await genresRes.json();
+    
+    const channelsRes = await fetch(`${portal}?type=itv&action=get_all_channels&JsHttpRequest=1-xml`, {
+        headers: { ...headers, "Authorization": "Bearer " + token }
+    });
+    const channelsData = await channelsRes.json();
 
-        let rawChannels = channelsData.js || channelsData.data || [];
-        let rawGenres = genresData.js || genresData.data || [];
+    let rawChannels = channelsData.js || channelsData.data || [];
+    let rawGenres = genresData.js || genresData.data || [];
 
-        let genreNames = {};
-        rawGenres.forEach(g => {
-            if(g && g.id) genreNames[g.id] = g.title || g.name || "";
-        });
+    let genreNames = {};
+    rawGenres.forEach(g => {
+        if(g && g.id) genreNames[g.id] = g.title || g.name || "";
+    });
 
-        let outputLines = ["#EXTM3U"];
-        let count = 0;
+    let outputLines = ["#EXTM3U"];
+    let count = 0;
 
-        for (let ch of rawChannels) {
-            let name = ch.name || ch.title || "";
-            let genreId = ch.tv_genre_id || ch.genre_id || "";
-            let genre = genreNames[genreId] || "";
+    for (let ch of rawChannels) {
+        let name = ch.name || ch.title || "";
+        let genreId = ch.tv_genre_id || ch.genre_id || "";
+        let genre = genreNames[genreId] || "";
 
-            if (matchFilter(name) || matchFilter(genre)) {
-                let cmd = ch.cmd || "";
-                if (cmd) {
-                    let streamUrl = cmd.replace(/^ffmpeg\s+/, "").trim();
-                    let info = `#EXTINF:-1 group-title="${genre}",${name}`;
-                    outputLines.push(info);
-                    outputLines.push(streamUrl);
-                    count++;
-                }
+        if (matchFilter(name) || matchFilter(genre)) {
+            let cmd = ch.cmd || "";
+            if (cmd) {
+                let streamUrl = cmd.replace(/^ffmpeg\s+/, "").trim();
+                let info = `#EXTINF:-1 group-title="${genre}",${name}`;
+                outputLines.push(info);
+                outputLines.push(streamUrl);
+                count++;
             }
         }
-
-        finalizeResult(outputLines, count);
-
-    } catch (e) {
-        throw new Error("فشل الاتصال بـ Stalker Portal.");
     }
+
+    finalizeResult(outputLines, count);
 }
 
 function finalizeResult(outputLines, count) {
@@ -232,7 +231,7 @@ function finalizeResult(outputLines, count) {
 
     if (count > 0) {
         statusText.innerText = `تم العثور على ${count} قناة مطابقة بنجاح!`;
-        const blob = new Blob([outputLines.join('\n')], { type: 'audio/x-mpegurl'>> });
+        const blob = new Blob([outputLines.join('\n')], { type: 'audio/x-mpegurl' });
         const url = URL.createObjectURL(blob);
         downloadBtn.href = url;
         downloadBtn.download = "filtered_channels.m3u";
