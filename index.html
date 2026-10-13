@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مصفاة القنوات الرياضية M3U & Stalker</title>
+    <title>مصفاة القنوات الرياضية المتقدمة</title>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; background: #f4f4f9; color: #333; padding: 20px; margin: 0; }
         .container { max-width: 650px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
@@ -21,12 +21,18 @@
 <body>
 
 <div class="container">
-    <h2>فلترة القنوات الرياضية</h2>
+    <h2>فلترة القنوات الرياضية المخصصة</h2>
     
     <label for="sourceMode">اختر مصدر القنوات:</label>
     <select id="sourceMode" onchange="switchMode()">
         <option value="m3u">ملف M3U أو رابط مباشر</option>
         <option value="stalker">Stalker Portal (رابط + MAC)</option>
+    </select>
+
+    <label for="filterType">طريقة الفلترة المطلوبة:</label>
+    <select id="filterType">
+        <option value="all">كل القنوات الرياضية الشاملة</option>
+        <option value="specific">قنوات محددة فقط (BEIN, AD, ثمانية, الكأس, Starzplay, STC)</option>
     </select>
 
     <!-- وضع M3U -->
@@ -61,15 +67,24 @@
 </div>
 
 <script>
-const SPORT_WORDS = [
+const ALL_SPORT_WORDS = [
     "sport", "sports", "bein", "ssc", "football", "soccer",
     "رياضة", "رياضية", "كرة", "الدوري", "المباراة",
-    "afc", "espn", "eurosport", "fox sports", "alkass", "ثمانية", "thmanyah"
+    "afc", "espn", "eurosport", "fox sports", "alkass", "الكأس", "ثمانية", "thmanyah", "starzplay", "stc"
 ];
 
-function isSports(text) {
+const SPECIFIC_WORDS = [
+    "bein", "ad sport", "ad sports", "abu dhabi", "أبوظبي", 
+    "thmanyah", "ثمانية", "alkass", "الكأس", 
+    "starzplay", "stc"
+];
+
+function matchFilter(text) {
     text = (text || "").toLowerCase();
-    return SPORT_WORDS.some(word => text.includes(word));
+    const filterType = document.getElementById('filterType').value;
+    
+    const wordsList = (filterType === 'specific') ? SPECIFIC_WORDS : ALL_SPORT_WORDS;
+    return wordsList.some(word => text.includes(word));
 }
 
 function switchMode() {
@@ -117,14 +132,12 @@ async function processChannels() {
                 return;
             }
 
-            statusText.innerText = "جاري الاتصال بـ Stalker Portal وجلب القنوات (قد يستغرق وقتاً)...";
-            
-            // ملاحظة: بوابات Stalker تتطلب غالباً بروكسي لتجاوز قيود CORS عند التشغيل من المتصفح مباشرة
+            statusText.innerText = "جاري الاتصال بـ Stalker Portal وجلب القنوات...";
             await fetchStalkerChannels(portal, mac);
         }
 
     } catch (error) {
-        statusText.innerText = "حدث خطأ أثناء الاتصال أو جلب البيانات (تأكد من صحة الروابط وقيود المتصفح CORS).";
+        statusText.innerText = "حدث خطأ أثناء الاتصال أو جلب البيانات.";
         console.error(error);
     }
 }
@@ -137,11 +150,11 @@ function parseAndFilterM3U(content) {
 
     for (let line of lines) {
         line = line.trim();
-        if (line.startsWith("#EXTINF:")) {
+        if (line.startswith("#EXTINF:")) {
             info = line;
-        } else if (line && !line.startsWith("#") && info) {
+        } else if (line && !line.startswith("#") && info) {
             let name = info.includes(",") ? info.split(",").pop().trim() : "";
-            if (isSports(info) || isSports(name)) {
+            if (matchFilter(info) || matchFilter(name)) {
                 outputLines.push(info);
                 outputLines.push(line);
                 count++;
@@ -158,27 +171,16 @@ async function fetchStalkerChannels(portal, mac) {
         portal += "/server/load.php";
     }
 
-    // محاولة الاتصال بالبوابة عبر متصفح الويب
-    const headers = {
-        "X-User-Agent": "Model: MAG254; Link: Ethernet",
-    };
+    const headers = { "X-User-Agent": "Model: MAG254; Link: Ethernet" };
 
     try {
-        // خطوة الـ Handshake والحصول على الـ Token
         const handshakeUrl = `${portal}?type=stb&action=handshake&JsHttpRequest=1-xml`;
-        
-        // استخدام بروكسي عام CORS تجاوزاً للقيود إن لم تدعم البوابة الوصول المباشر من المتصفح
         const response = await fetch(handshakeUrl, { headers });
         const data = await response.json();
         
         let token = data.js && data.js.token ? data.js.token : null;
-        if (!token) {
-            throw new Error("لم تعيد البوابة رمز التوثيق (Token). قد تكون الحماية تمنع الاتصال المباشر من المتصفح.");
-        }
+        if (!token) throw new Error("فشل الحصول على الرمز.");
 
-        statusText.innerText = "تم الاتصال بنجاح، جاري جلب وتصفية القنوات الرياضية...";
-        
-        // جلب الأقسام والقنوات
         const genresRes = await fetch(`${portal}?type=itv&action=get_genres&JsHttpRequest=1-xml`, {
             headers: { ...headers, "Authorization": "Bearer " + token }
         });
@@ -205,10 +207,9 @@ async function fetchStalkerChannels(portal, mac) {
             let genreId = ch.tv_genre_id || ch.genre_id || "";
             let genre = genreNames[genreId] || "";
 
-            if (isSports(name) || isSports(genre)) {
+            if (matchFilter(name) || matchFilter(genre)) {
                 let cmd = ch.cmd || "";
                 if (cmd) {
-                    // تنظيف أمر التشغيل
                     let streamUrl = cmd.replace(/^ffmpeg\s+/, "").trim();
                     let info = `#EXTINF:-1 group-title="${genre}",${name}`;
                     outputLines.push(info);
@@ -221,7 +222,7 @@ async function fetchStalkerChannels(portal, mac) {
         finalizeResult(outputLines, count);
 
     } catch (e) {
-        throw new Error("فشل الاتصال بـ Stalker Portal (قد تمنع إعدادات الأمان CORS الاتصال المباشر بالسيرفر من المتصفح).");
+        throw new Error("فشل الاتصال بـ Stalker Portal.");
     }
 }
 
@@ -230,14 +231,14 @@ function finalizeResult(outputLines, count) {
     const downloadBtn = document.getElementById('downloadBtn');
 
     if (count > 0) {
-        statusText.innerText = `تم العثور على ${count} قناة رياضية بنجاح!`;
-        const blob = new Blob([outputLines.join('\n')], { type: 'audio/x-mpegurl' });
+        statusText.innerText = `تم العثور على ${count} قناة مطابقة بنجاح!`;
+        const blob = new Blob([outputLines.join('\n')], { type: 'audio/x-mpegurl'>> });
         const url = URL.createObjectURL(blob);
         downloadBtn.href = url;
-        downloadBtn.download = "sports_channels.m3u";
+        downloadBtn.download = "filtered_channels.m3u";
         downloadBtn.style.display = 'block';
     } else {
-        statusText.innerText = "لم يتم العثور على أي قنوات رياضية مطابقة.";
+        statusText.innerText = "لم يتم العثور على أي قنوات مطابقة للخيار المختار.";
     }
 }
 </script>
