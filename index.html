@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مصفاة القنوات الرياضية M3U</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f4f4f9; color: #333; padding: 20px; margin: 0; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { color: #007aff; text-align: center; }
+        label { display: block; margin-top: 15px; font-weight: bold; }
+        input, textarea, button { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { background: #007aff; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        button:active { background: #0056b3; }
+        #result { margin-top: 20px; padding: 10px; background: #eef9ff; border-radius: 8px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>فلترة القنوات الرياضية M3U</h2>
+    
+    <label for="m3uInput">أدخل محتوى ملف M3U أو رابط البلاي لست:</label>
+    <textarea id="m3uInput" rows="6" placeholder="#EXTM3U..."></textarea>
+    
+    <button onclick="filterSports()">فلترة واستخراج القنوات الرياضية</button>
+    
+    <div id="result">
+        <p id="statusText"></p>
+        <a id="downloadBtn" style="display:none; text-align:center; display:block; background: #34c759; color: white; padding: 10px; border-radius: 8px; text-decoration: none; margin-top: 10px;">تحميل الملف المصفى (.m3u)</a>
+    </div>
+</div>
+
+<script>
+const SPORT_WORDS = [
+    "sport", "sports", "bein", "ssc", "football", "soccer",
+    "رياضة", "رياضية", "كرة", "الدوري", "المباراة",
+    "afc", "espn", "eurosport", "fox sports"
+];
+
+function isSports(text) {
+    text = (text || "").toLowerCase();
+    return SPORT_WORDS.some(word => text.includes(word));
+}
+
+function filterSports() {
+    const content = document.getElementById('m3uInput').value;
+    if (!content.trim()) {
+        alert("الرجاء إدخال بيانات M3U صحيحة.");
+        return;
+    }
+
+    const lines = content.split('\n');
+    let channels = [];
+    let info = null;
+    let outputLines = ["#EXTM3U"];
+
+    for (let line of lines) {
+        line = line.trim();
+        if (line.startsWith("#EXTINF:")) {
+            info = line;
+        } else if (line && !line.startsWith("#") && info) {
+            let name = info.includes(",") ? info.split(",").pop().trim() : "";
+            if (isSports(info) || isSports(name)) {
+                outputLines.push(info);
+                outputLines.push(line);
+                channels.push(name);
+            }
+            info = null;
+        }
+    }
+
+    const statusText = document.getElementById('statusText');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const resultDiv = document.getElementById('result');
+    
+    resultDiv.style.display = 'block';
+
+    if (channels.length > 0) {
+        statusText.innerText = `تم العثور على ${channels.length} قناة رياضية بنجاح!`;
+        const blob = new Blob([outputLines.join('\n')], { type: 'audio/x-mpegurl' });
+        const url = URL.createObjectURL(blob);
+        downloadBtn.href = url;
+        downloadBtn.download = "sports_channels.m3u";
+        downloadBtn.style.display = 'block';
+    } else {
+        statusText.innerText = "لم يتم العثور على أي قنوات رياضية مطابقة.";
+        downloadBtn.style.display = 'none';
+    }
+}
+</script>
+
+</body>
+</html>
