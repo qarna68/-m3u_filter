@@ -9,9 +9,10 @@
         .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         h2 { color: #007aff; text-align: center; }
         label { display: block; margin-top: 15px; font-weight: bold; }
-        input, textarea, button { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        input[type="text"], input[type="file"], button { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
         button { background: #007aff; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 20px; }
         button:active { background: #0056b3; }
+        .section { margin-top: 20px; padding: 15px; background: #f9f9fb; border-radius: 8px; border: 1px solid #e1e1e6; }
         #result { margin-top: 20px; padding: 10px; background: #eef9ff; border-radius: 8px; display: none; }
     </style>
 </head>
@@ -20,10 +21,17 @@
 <div class="container">
     <h2>فلترة القنوات الرياضية M3U</h2>
     
-    <label for="m3uInput">أدخل محتوى ملف M3U أو رابط البلاي لست:</label>
-    <textarea id="m3uInput" rows="6" placeholder="#EXTM3U..."></textarea>
+    <div class="section">
+        <label for="fileInput">اختر ملف M3U من الآيفون:</label>
+        <input type="file" id="fileInput" accept=".m3u,.txt">
+    </div>
+
+    <div class="section">
+        <label for="urlInput">أو أدخل رابط ملف M3U مباشر:</label>
+        <input type="text" id="urlInput" placeholder="https://example.com/playlist.m3u">
+    </div>
     
-    <button onclick="filterSports()">فلترة واستخراج القنوات الرياضية</button>
+    <button onclick="processPlaylist()">فلترة واستخراج القنوات الرياضية</button>
     
     <div id="result">
         <p id="statusText"></p>
@@ -35,7 +43,7 @@
 const SPORT_WORDS = [
     "sport", "sports", "bein", "ssc", "football", "soccer",
     "رياضة", "رياضية", "كرة", "الدوري", "المباراة",
-    "afc", "espn", "eurosport", "fox sports"
+    "afc", "espn", "eurosport", "fox sports", "alkass", "ثمانية"
 ];
 
 function isSports(text) {
@@ -43,17 +51,46 @@ function isSports(text) {
     return SPORT_WORDS.some(word => text.includes(word));
 }
 
-function filterSports() {
-    const content = document.getElementById('m3uInput').value;
-    if (!content.trim()) {
-        alert("الرجاء إدخال بيانات M3U صحيحة.");
-        return;
-    }
+async function processPlaylist() {
+    const fileInput = document.getElementById('fileInput');
+    const urlInput = document.getElementById('urlInput').value.trim();
+    let content = "";
 
+    const resultDiv = document.getElementById('result');
+    const statusText = document.getElementById('statusText');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    resultDiv.style.display = 'block';
+    statusText.innerText = "جاري المعالجة...";
+    downloadBtn.style.display = 'none';
+
+    try {
+        if (fileInput.files.length > 0) {
+            content = await fileInput.files[0].text();
+        } else if (urlInput) {
+            // ملاحظة: روابط الـ HTTP العادية قد تواجه قيود CORS في سفاري، الأفضل استخدام روابط HTTPS
+            const response = await fetch(urlInput);
+            if (!response.ok) throw new Error("تعذر جلب الرابط");
+            content = await response.text();
+        } else {
+            alert("الرجاء اختيار ملف من الجهاز أو إدخال رابط صالح.");
+            resultDiv.style.display = 'none';
+            return;
+        }
+
+        parseAndFilter(content);
+
+    } catch (error) {
+        statusText.innerText = "حدث خطأ أثناء جلب الملف أو الرابط (تأكد من عدم وجود حظر CORS للرابط).";
+        console.error(error);
+    }
+}
+
+function parseAndFilter(content) {
     const lines = content.split('\n');
-    let channels = [];
     let info = null;
     let outputLines = ["#EXTM3U"];
+    let count = 0;
 
     for (let line of lines) {
         line = line.trim();
@@ -64,7 +101,7 @@ function filterSports() {
             if (isSports(info) || isSports(name)) {
                 outputLines.push(info);
                 outputLines.push(line);
-                channels.push(name);
+                count++;
             }
             info = null;
         }
@@ -72,12 +109,9 @@ function filterSports() {
 
     const statusText = document.getElementById('statusText');
     const downloadBtn = document.getElementById('downloadBtn');
-    const resultDiv = document.getElementById('result');
-    
-    resultDiv.style.display = 'block';
 
-    if (channels.length > 0) {
-        statusText.innerText = `تم العثور على ${channels.length} قناة رياضية بنجاح!`;
+    if (count > 0) {
+        statusText.innerText = `تم العثور على ${count} قناة رياضية بنجاح!`;
         const blob = new Blob([outputLines.join('\n')], { type: 'audio/x-mpegurl' });
         const url = URL.createObjectURL(blob);
         downloadBtn.href = url;
@@ -85,7 +119,6 @@ function filterSports() {
         downloadBtn.style.display = 'block';
     } else {
         statusText.innerText = "لم يتم العثور على أي قنوات رياضية مطابقة.";
-        downloadBtn.style.display = 'none';
     }
 }
 </script>
